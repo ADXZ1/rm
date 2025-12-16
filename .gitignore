@@ -1,0 +1,24 @@
+# Python 编译缓存
+__pycache__/
+*.pyc
+
+# 环境变量与密钥（非常重要，严禁上传）
+.env
+.venv
+env/
+venv/
+
+# 系统生成的文件
+.DS_Store
+Thumbs.db
+
+# IDE 配置文件（可选，视情况而定）
+.vscode/
+.idea/
+
+*.pth
+*.pt
+*.weights
+*.onnx
+dataset/
+runs/

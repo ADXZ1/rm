@@ -1,0 +1,14 @@
+README.md
+setup.py
+tests/test_interface.py
+vertical_grab/__init__.py
+vertical_grab/catch.py
+vertical_grab/convert.py
+vertical_grab/crawl.py
+vertical_grab/interface.py
+vertical_grab.egg-info/PKG-INFO
+vertical_grab.egg-info/SOURCES.txt
+vertical_grab.egg-info/dependency_links.txt
+vertical_grab.egg-info/not-zip-safe
+vertical_grab.egg-info/requires.txt
+vertical_grab.egg-info/top_level.txt

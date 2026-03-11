@@ -17,6 +17,8 @@ import pickle
 import struct
 import time
 import serial  # edit: Modbus 驱动串口
+import YIYEQIANG_OUT  # 移液枪弹出枪头模块
+import YIYEQIANG_INIT  # 移液枪初始化模块
 from PIL import Image, ImageTk
 from Robot import RobotController
 from Base.Base_Ctr import RobotController as BSCTL
@@ -328,8 +330,9 @@ class RobotRuntime:
         try:
             print("正在初始化双机械臂控制器...")
             self.controller = RobotController()
-            self.robot1 = self.controller.init_robot1()
-            self.robot2 = self.controller.init_robot2()
+            # RobotController的__init__已经连接了机器人，这里直接获取引用
+            self.robot1 = self.controller.robot1_ctrl.robot
+            self.robot2 = self.controller.robot2_ctrl.robot
 
             self.initialized = True
             return True
@@ -523,11 +526,38 @@ def run_script(script_name):
     """在新线程中执行对应的 Python 脚本"""
     def run():
         try:
-            subprocess.run(['python', script_name], check=True)
-        except subprocess.CalledProcessError as e:
-            print(f"Error occurred: {e}")
-    
-    # 创建新线程执行脚本
+            script_path = os.path.join(CURRENT_DIR, script_name)
+            if not os.path.exists(script_path):
+                print(f"脚本文件不存在: {script_path}")
+                return
+
+            print(f"正在启动脚本: {script_name}")
+            # 使用当前 Python 解释器启动子进程，避免阻塞主线程
+            # 不重定向输出，允许脚本正常显示信息
+            proc = subprocess.Popen([sys.executable, script_path],
+                                    cwd=CURRENT_DIR,
+                                    stdout=None,
+                                    stderr=None)
+
+            print(f"Started script {script_name}, pid={proc.pid}")
+
+            # 等待一段时间检查进程是否正常启动
+            try:
+                proc.wait(timeout=5.0)  # 等待5秒
+                if proc.returncode == 0:
+                    print(f"脚本 {script_name} 执行完成")
+                else:
+                    print(f"脚本 {script_name} 执行失败，返回码: {proc.returncode}")
+            except subprocess.TimeoutExpired:
+                print(f"脚本 {script_name} 正在后台运行")
+                # 让进程继续在后台运行
+
+        except FileNotFoundError:
+            print(f"Python解释器或脚本文件未找到: {script_name}")
+        except Exception as e:
+            print(f"启动脚本时出错 {script_name}: {e}")
+
+    # 在独立线程中启动子进程（线程结束不会影响子进程）
     thread = threading.Thread(target=run, daemon=True)
     thread.start()
 
@@ -702,9 +732,30 @@ def create_gui(runtime=None):
             btn.grid(row=row, column=col, padx=5, pady=5, sticky='ew')
         return frame
 
+    # 使用运行时内的 controller/robot 在本进程执行抓瓶子，避免重复初始化硬件
+    def run_grab_via_runtime():
+        def worker():
+            try:
+                # 延迟导入以减小启动开销
+                import grab_pingzi_baizhuo as grab_mod
+                controller = runtime.controller
+                robot = runtime.robot1
+                if controller is None or robot is None:
+                    print("controller 或 robot 未就绪")
+                    return
+                print("开始抓瓶子（使用运行时 controller）")
+                result = grab_mod.capture_and_move(controller, robot)
+                print("抓瓶子结果:", result)
+            except Exception as e:
+                print("抓瓶子出错:", e)
+        threading.Thread(target=worker, daemon=True).start()
+
     # 左侧面板 - 机械臂控制
     arm_control_frame = create_section(left_panel, "机械臂控制")
     arm_control_frame.pack(fill='x', pady=(0, 10))
+    # 抓瓶子：使用运行时内的 controller（避免重复初始化），在后台线程执行
+    grab_button = tk.Button(arm_control_frame, text="抓瓶子", command=run_grab_via_runtime, **button_style)
+    grab_button.pack(fill='x', pady=3)
     
     # 轨迹控制
     path_frame = create_section(left_panel, "轨迹控制")
@@ -719,6 +770,40 @@ def create_gui(runtime=None):
     # 右侧面板 - 末端控制
     end_effector_frame = create_section(right_panel, "末端工具控制")
     end_effector_frame.pack(fill='x', pady=(0, 10))
+    
+    # 弹出枪头按钮 (直接调用YIYEQIANG_OUT模块)
+    def eject_tip_action():
+        def worker():
+            try:
+                import YIYEQIANG_OUT as yiyeqiang
+                result = yiyeqiang.eject_tip(port='COM4')
+                if result:
+                    root.after(0, lambda: messagebox.showinfo("成功", "枪头已弹出!"))
+                else:
+                    root.after(0, lambda: messagebox.showerror("失败", "弹出枪头失败"))
+            except Exception as e:
+                root.after(0, lambda: messagebox.showerror("错误", f"执行出错: {str(e)}"))
+        threading.Thread(target=worker, daemon=True).start()
+    
+    eject_btn = tk.Button(end_effector_frame, text="弹出枪头", command=eject_tip_action, **button_style)
+    eject_btn.pack(fill='x', pady=3)
+    
+    # 初始化枪头按钮
+    def init_tip_action():
+        def worker():
+            try:
+                import YIYEQIANG_INIT as yiyeqiang_init
+                result = yiyeqiang_init.init_tip(port='/dev/hand')
+                if result:
+                    root.after(0, lambda: messagebox.showinfo("成功", "枪头初始化成功!"))
+                else:
+                    root.after(0, lambda: messagebox.showerror("失败", "枪头初始化失败"))
+            except Exception as e:
+                root.after(0, lambda: messagebox.showerror("错误", f"执行出错: {str(e)}"))
+        threading.Thread(target=worker, daemon=True).start()
+    
+    init_btn = tk.Button(end_effector_frame, text="初始化枪头", command=init_tip_action, **button_style)
+    init_btn.pack(fill='x', pady=3)
     
     end_buttons = [
         ("打开夹爪", "release.py"),

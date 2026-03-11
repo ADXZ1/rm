@@ -11,9 +11,9 @@ import socket
 import pickle
 import struct
 from config import *  # 导入配置
-from class_Kuaihuanshou import Kuaihuanshou
-from class_Delay import RelayController
-from class_ADP import ADP
+from Class.Class_Kuaihuanshou import Kuaihuanshou
+from Class.Class_Delay import RelayController
+from Class.Class_ADP import ADP
 
 
 class SimpleRobotArm:
@@ -64,7 +64,7 @@ class SimpleRobotArm:
         if self.robot is not None:
             try:
                 if self.handle is not None:
-                    self.robot.rm_delete_robot_arm(self.handle)
+                    self.robot.rm_delete_robot_arm()
             except Exception as e:
                 print(f"{self.robot_name}断开连接时出错: {e}")
                 self.last_error = str(e)
